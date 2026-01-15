@@ -21,4 +21,5 @@ export interface GenerationOptions {
   temperature?: number;
   maxTokens?: number;
   filter?: Record<string, any>;
+  useCache?: boolean;
 }

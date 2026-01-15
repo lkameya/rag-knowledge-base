@@ -11,6 +11,7 @@ import { generateId } from '../../utils/helpers';
 import { logger } from '../../utils/logger';
 import { DatabaseError } from '../../utils/errors';
 import { Document as DocModel } from '../../storage/metadata/models';
+import { statusTracker } from '../status/statusTracker';
 
 /**
  * Process and ingest a document
@@ -29,8 +30,24 @@ export async function ingestDocument(
       'UPDATE documents SET status = ?, processed_at = ? WHERE id = ?'
     ).run('processing', new Date().toISOString(), documentId);
 
+    statusTracker.emitStatus({
+      type: 'document',
+      id: documentId,
+      status: 'processing',
+      message: 'Starting document processing',
+      progress: 0,
+    });
+
     // Step 1: Parse document
     logger.info('Step 1: Parsing document', { documentId, filename, filepath });
+    statusTracker.emitStatus({
+      type: 'document',
+      id: documentId,
+      status: 'parsing',
+      message: 'Parsing document content',
+      progress: 10,
+    });
+
     const parsedDoc = await parseDocument(filepath, filename, documentId);
     logger.info('Document parsed successfully', { 
       documentId, 
@@ -40,6 +57,14 @@ export async function ingestDocument(
 
     // Step 2: Chunk document
     logger.info('Step 2: Chunking document', { documentId });
+    statusTracker.emitStatus({
+      type: 'document',
+      id: documentId,
+      status: 'chunking',
+      message: 'Chunking document into smaller pieces',
+      progress: 30,
+    });
+
     const chunks = await chunkDocument(parsedDoc, documentId);
     logger.info('Document chunked successfully', { 
       documentId, 
@@ -53,6 +78,14 @@ export async function ingestDocument(
 
     // Step 3: Store chunks in SQLite
     logger.info('Step 3: Storing chunks in SQLite', { documentId, chunkCount: chunks.length });
+    statusTracker.emitStatus({
+      type: 'document',
+      id: documentId,
+      status: 'storing',
+      message: `Storing ${chunks.length} chunks in database`,
+      progress: 50,
+    });
+
     const insertChunk = db.prepare(`
       INSERT INTO chunks (id, document_id, chunk_index, content, page_number, metadata_json)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -76,6 +109,14 @@ export async function ingestDocument(
 
     // Step 4: Create embeddings and store in Chroma
     logger.info('Step 4: Creating embeddings and storing in Chroma', { documentId, chunkCount: chunks.length });
+    statusTracker.emitStatus({
+      type: 'document',
+      id: documentId,
+      status: 'embedding',
+      message: `Creating embeddings for ${chunks.length} chunks`,
+      progress: 70,
+    });
+
     const langchainDocs = chunks.map(
       (chunk) =>
         new Document({
@@ -91,6 +132,14 @@ export async function ingestDocument(
       vectorIdsCount: vectorIds.length 
     });
 
+    statusTracker.emitStatus({
+      type: 'document',
+      id: documentId,
+      status: 'finalizing',
+      message: 'Finalizing document processing',
+      progress: 90,
+    });
+
     // Step 5: Update document status to processed
     const processedAt = new Date().toISOString();
     db.prepare(
@@ -102,6 +151,15 @@ export async function ingestDocument(
       documentId,
       chunksCreated: chunks.length,
       duration: `${duration}ms`,
+    });
+
+    statusTracker.emitStatus({
+      type: 'document',
+      id: documentId,
+      status: 'processed',
+      message: `Document processed successfully in ${duration}ms`,
+      progress: 100,
+      data: { chunksCreated: chunks.length, duration },
     });
 
     return {
@@ -122,6 +180,15 @@ export async function ingestDocument(
       error: errorMessage,
       stack: errorStack,
       errorType: error?.constructor?.name || typeof error,
+    });
+
+    statusTracker.emitStatus({
+      type: 'document',
+      id: documentId,
+      status: 'failed',
+      message: `Processing failed: ${errorMessage}`,
+      progress: 0,
+      data: { error: errorMessage },
     });
     
     return {

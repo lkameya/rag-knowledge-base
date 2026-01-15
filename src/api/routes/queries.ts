@@ -45,12 +45,6 @@ router.post(
         temperature,
       });
 
-      // TODO: Implement caching in Milestone 4
-      // For now, useCache is ignored
-      if (useCache) {
-        logger.warn('Caching not yet implemented, ignoring useCache flag');
-      }
-
       // Ensure filter is either undefined or a valid non-empty object
       let validFilter: Record<string, any> | undefined = undefined;
       if (filter && typeof filter === 'object' && !Array.isArray(filter) && Object.keys(filter).length > 0) {
@@ -62,6 +56,7 @@ router.post(
         temperature,
         maxTokens,
         filter: validFilter,
+        useCache: useCache !== false, // Default to true if not specified
       });
 
       res.json(result);
@@ -100,6 +95,40 @@ router.get('/history', async (req: Request, res: Response) => {
     res.json({ queries });
   } catch (error) {
     logger.error('Failed to get query history', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+/**
+ * Get cache statistics
+ * GET /api/query/cache/stats
+ */
+router.get('/cache/stats', async (req: Request, res: Response) => {
+  try {
+    const { queryCache } = await import('../../services/cache');
+    const stats = queryCache.getStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error('Failed to get cache stats', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+});
+
+/**
+ * Clear cache
+ * DELETE /api/query/cache
+ */
+router.delete('/cache', async (req: Request, res: Response) => {
+  try {
+    const { queryCache } = await import('../../services/cache');
+    queryCache.clear();
+    res.json({ success: true, message: 'Cache cleared' });
+  } catch (error) {
+    logger.error('Failed to clear cache', {
       error: error instanceof Error ? error.message : String(error),
     });
     throw error;

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { isDatabaseConnected } from '../../storage/metadata/database';
 import { isChromaConnected } from '../../storage/vector/chromaClient';
+import { queryCache } from '../../services/cache';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
 
@@ -20,6 +21,7 @@ router.get('/', async (req: Request, res: Response) => {
         chroma: (await isChromaConnected()) ? 'connected' : 'disconnected',
         ollama: 'unknown',
       },
+      cache: queryCache.getStats(),
     };
 
     // Check Ollama connection

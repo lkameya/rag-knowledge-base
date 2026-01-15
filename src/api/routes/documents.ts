@@ -11,6 +11,7 @@ import {
 import { saveFile, deleteFile, validateFileType, validateFileSize } from '../../storage/files/fileManager';
 import { NotFoundError, ValidationError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
+import { statusTracker } from '../../services/status/statusTracker';
 import { z } from 'zod';
 
 const router = Router();
@@ -37,14 +38,29 @@ const upload = multer({
 router.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
-      throw new ValidationError('No file provided');
+      throw new ValidationError('No file provided. Please include a file in the request.');
     }
 
     const file = req.file;
 
+    // Validate file type
+    if (!validateFileType(file.mimetype)) {
+      throw new ValidationError(
+        `Invalid file type: ${file.mimetype}. Allowed types: ${config.upload.allowedMimeTypes.join(', ')}`
+      );
+    }
+
     // Validate file size
     if (!validateFileSize(file.size)) {
-      throw new ValidationError(`File size exceeds maximum of ${config.upload.maxFileSize} bytes`);
+      const maxSizeMB = (config.upload.maxFileSize / (1024 * 1024)).toFixed(2);
+      throw new ValidationError(
+        `File size (${(file.size / (1024 * 1024)).toFixed(2)}MB) exceeds maximum of ${maxSizeMB}MB`
+      );
+    }
+
+    // Validate filename
+    if (!file.originalname || file.originalname.trim().length === 0) {
+      throw new ValidationError('Filename is required');
     }
 
     // Create document record
@@ -54,6 +70,15 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       file.mimetype,
       file.size
     );
+
+    // Emit initial status
+    statusTracker.emitStatus({
+      type: 'document',
+      id: documentId,
+      status: 'uploaded',
+      message: 'File uploaded, starting processing',
+      progress: 5,
+    });
 
     // Save file to disk
     const filepath = await saveFile(file, documentId);

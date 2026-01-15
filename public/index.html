@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Knowledge Base</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            background: #f0f0ff;
+            border-color: #764ba2;
+        }
+
+        .upload-area.dragover {
+            background: #e8e8ff;
+            border-color: #764ba2;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: transform 0.2s;
+            margin: 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .query-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+
+        .query-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            margin: 5px;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-processing {
+            background: #cfe2ff;
+            color: #084298;
+        }
+
+        .status-parsing {
+            background: #d1ecf1;
+            color: #055160;
+        }
+
+        .status-chunking {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-embedding {
+            background: #e2e3f5;
+            color: #383d41;
+        }
+
+        .status-processed {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+
+        .status-failed {
+            background: #f8d7da;
+            color: #842029;
+        }
+
+        .status-retrieving {
+            background: #cfe2ff;
+            color: #084298;
+        }
+
+        .status-generating {
+            background: #d1ecf1;
+            color: #055160;
+        }
+
+        .status-llm_processing {
+            background: #e2e3f5;
+            color: #383d41;
+        }
+
+        .status-completed {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+
+        .status-cached {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+        }
+
+        .status-list {
+            max-height: 300px;
+            overflow-y: auto;
+            background: white;
+            border-radius: 6px;
+            padding: 15px;
+        }
+
+        .status-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-item-time {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .answer-box {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .answer-box h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .answer-text {
+            line-height: 1.6;
+            color: #555;
+            margin-bottom: 20px;
+        }
+
+        .citations {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+
+        .citation-item {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .documents-list {
+            display: grid;
+            gap: 15px;
+        }
+
+        .document-card {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+
+        .document-card h4 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #842029;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 RAG Knowledge Base</h1>
+            <p>Upload documents and ask questions with real-time status updates</p>
+        </div>
+
+        <div class="content">
+            <!-- Document Upload Section -->
+            <div class="section">
+                <h2>📄 Upload Document</h2>
+                <div class="upload-area" id="uploadArea">
+                    <p>📁 Drag and drop a file here or click to browse</p>
+                    <p style="font-size: 14px; color: #666; margin-top: 10px;">
+                        Supported formats: PDF, Markdown (.md), Text (.txt)
+                    </p>
+                    <input type="file" id="fileInput" accept=".pdf,.md,.txt,.markdown">
+                </div>
+                <div id="uploadStatus"></div>
+            </div>
+
+            <!-- Documents List Section -->
+            <div class="section">
+                <h2>📋 Documents</h2>
+                <button class="btn" onclick="loadDocuments()">Refresh</button>
+                <div id="documentsList" class="documents-list"></div>
+            </div>
+
+            <!-- Query Section -->
+            <div class="section">
+                <h2>❓ Ask a Question</h2>
+                <textarea 
+                    id="queryInput" 
+                    class="query-input" 
+                    rows="3" 
+                    placeholder="Enter your question here..."></textarea>
+                <div>
+                    <button class="btn" onclick="submitQuery()">Ask Question</button>
+                    <label style="margin-left: 20px;">
+                        <input type="checkbox" id="useCache" checked> Use Cache
+                    </label>
+                </div>
+                <div id="queryStatus"></div>
+                <div id="answerBox"></div>
+            </div>
+
+            <!-- Status Feed Section -->
+            <div class="section">
+                <h2>📊 Real-Time Status</h2>
+                <div id="statusList" class="status-list">
+                    <p style="text-align: center; color: #666;">Connecting to status stream...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let eventSource = null;
+        const statusMap = new Map();
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupFileUpload();
+            connectStatusStream();
+            loadDocuments();
+        });
+
+        // File Upload
+        function setupFileUpload() {
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+
+            uploadArea.addEventListener('click', () => fileInput.click());
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                if (e.dataTransfer.files.length > 0) {
+                    uploadFile(e.dataTransfer.files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    uploadFile(e.target.files[0]);
+                }
+            });
+        }
+
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.innerHTML = '<div class="loading"></div> Uploading...';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/documents/upload`, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = `
+                        <div class="status-indicator status-pending">
+                            Uploaded! Document ID: ${data.documentId}
+                        </div>
+                        <p>Processing started. Check status feed below for progress.</p>
+                    `;
+                    loadDocuments();
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="error-message">Error: ${data.error?.message || 'Upload failed'}</div>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="error-message">Error: ${error.message}</div>
+                `;
+            }
+        }
+
+        // Query
+        async function submitQuery() {
+            const query = document.getElementById('queryInput').value.trim();
+            const useCache = document.getElementById('useCache').checked;
+
+            if (!query) {
+                alert('Please enter a question');
+                return;
+            }
+
+            const statusDiv = document.getElementById('queryStatus');
+            const answerBox = document.getElementById('answerBox');
+            
+            statusDiv.innerHTML = '<div class="loading"></div> Processing query...';
+            answerBox.innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, useCache }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    statusDiv.innerHTML = `
+                        <div class="status-indicator status-completed">Query completed</div>
+                    `;
+                    
+                    answerBox.innerHTML = `
+                        <div class="answer-box">
+                            <h3>Answer</h3>
+                            <div class="answer-text">${escapeHtml(data.answer)}</div>
+                            ${data.citations && data.citations.length > 0 ? `
+                                <div class="citations">
+                                    <h4>Citations</h4>
+                                    ${data.citations.map(c => `
+                                        <div class="citation-item">
+                                            <strong>${escapeHtml(c.source)}</strong>
+                                            ${c.page ? ` - Page ${c.page}` : ''}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
+                            ${data.metadata ? `
+                                <div style="margin-top: 15px; font-size: 12px; color: #666;">
+                                    Response time: ${data.metadata.responseTime}ms
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="error-message">Error: ${data.error?.message || 'Query failed'}</div>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="error-message">Error: ${error.message}</div>
+                `;
+            }
+        }
+
+        // Documents List
+        async function loadDocuments() {
+            try {
+                const response = await fetch(`${API_BASE}/api/documents?status=processed&limit=10`);
+                const data = await response.json();
+
+                const listDiv = document.getElementById('documentsList');
+                if (data.documents && data.documents.length > 0) {
+                    listDiv.innerHTML = data.documents.map(doc => `
+                        <div class="document-card">
+                            <h4>${escapeHtml(doc.filename)}</h4>
+                            <div class="status-indicator status-${doc.status}">${doc.status}</div>
+                            <p style="font-size: 12px; color: #666; margin-top: 5px;">
+                                Uploaded: ${new Date(doc.uploaded_at).toLocaleString()}
+                            </p>
+                        </div>
+                    `).join('');
+                } else {
+                    listDiv.innerHTML = '<p style="color: #666;">No documents yet. Upload one above!</p>';
+                }
+            } catch (error) {
+                console.error('Failed to load documents:', error);
+            }
+        }
+
+        // Status Stream
+        function connectStatusStream() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource(`${API_BASE}/api/status/stream`);
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const statusEvent = JSON.parse(event.data);
+                    updateStatusDisplay(statusEvent);
+                } catch (error) {
+                    console.error('Failed to parse status event:', error);
+                }
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('SSE error:', error);
+                // Reconnect after 3 seconds
+                setTimeout(connectStatusStream, 3000);
+            };
+        }
+
+        function updateStatusDisplay(event) {
+            statusMap.set(event.id, event);
+            
+            const statusList = document.getElementById('statusList');
+            const events = Array.from(statusMap.values())
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                .slice(0, 20);
+
+            statusList.innerHTML = events.map(e => `
+                <div class="status-item">
+                    <div>
+                        <span class="status-indicator status-${e.status}">${e.status}</span>
+                        <span style="margin-left: 10px;">${escapeHtml(e.message || '')}</span>
+                        ${e.progress !== undefined ? `
+                            <div class="progress-bar" style="margin-top: 8px;">
+                                <div class="progress-fill" style="width: ${e.progress}%"></div>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <span class="status-item-time">${new Date(e.timestamp).toLocaleTimeString()}</span>
+                </div>
+            `).join('');
+
+            // Auto-refresh documents if a document was processed
+            if (event.type === 'document' && event.status === 'processed') {
+                setTimeout(loadDocuments, 1000);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

@@ -7,6 +7,8 @@ import { requestLogger } from './middleware/logger';
 import healthRouter from './routes/health';
 import documentsRouter from './routes/documents';
 import queriesRouter from './routes/queries';
+import statusRouter from './routes/status';
+import path from 'path';
 
 export function createApp(): Express {
   const app = express();
@@ -17,18 +19,18 @@ export function createApp(): Express {
   app.use(express.urlencoded({ extended: true }));
   app.use(requestLogger);
 
-  // Routes
+  // API Routes (before static files to avoid conflicts)
   app.use('/api/health', healthRouter);
   app.use('/api/documents', documentsRouter);
   app.use('/api/query', queriesRouter);
+  app.use('/api/status', statusRouter);
 
-  // Root endpoint
+  // Serve static files (frontend)
+  app.use(express.static(path.join(__dirname, '../../public')));
+
+  // Root endpoint - serve the UI
   app.get('/', (req, res) => {
-    res.json({
-      name: 'RAG Knowledge Base API',
-      version: '1.0.0',
-      status: 'running',
-    });
+    res.sendFile(path.join(__dirname, '../../public/index.html'));
   });
 
   // 404 handler

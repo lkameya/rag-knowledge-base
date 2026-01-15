@@ -33,3 +33,21 @@ export class FileProcessingError extends AppError {
     super(`File processing error: ${message}`, 422);
   }
 }
+
+export class VectorStoreError extends AppError {
+  constructor(message: string) {
+    super(`Vector store error: ${message}`, 500);
+  }
+}
+
+export class EmbeddingError extends AppError {
+  constructor(message: string) {
+    super(`Embedding generation error: ${message}`, 500);
+  }
+}
+
+export class LLMError extends AppError {
+  constructor(message: string) {
+    super(`LLM error: ${message}`, 500);
+  }
+}

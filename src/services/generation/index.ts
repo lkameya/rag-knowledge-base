@@ -8,6 +8,9 @@ import { GenerationResult, GenerationOptions, Citation } from './types';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
 import { getDatabase } from '../../storage/metadata/database';
+import { queryCache } from '../cache';
+import { statusTracker } from '../status/statusTracker';
+import { generateId } from '../../utils/helpers';
 
 let llm: ChatOllama | null = null;
 
@@ -41,6 +44,7 @@ export async function generateAnswer(
   options: GenerationOptions = {}
 ): Promise<GenerationResult> {
   const startTime = Date.now();
+  const queryId = generateId();
 
   try {
     const {
@@ -48,9 +52,35 @@ export async function generateAnswer(
       temperature = 0.7,
       maxTokens,
       filter,
+      useCache = true,
     } = options;
 
-    logger.info('Generating answer', { question, topK, temperature });
+    // Check cache first
+    if (useCache) {
+      const cacheKey = { topK, temperature, maxTokens, filter };
+      const cached = queryCache.get(question, cacheKey);
+      if (cached) {
+        logger.info('Returning cached answer', { question });
+        statusTracker.emitStatus({
+          type: 'query',
+          id: queryId,
+          status: 'cached',
+          message: 'Returning cached result',
+          progress: 100,
+        });
+        return cached;
+      }
+    }
+
+    logger.info('Generating answer', { question, topK, temperature, useCache });
+
+    statusTracker.emitStatus({
+      type: 'query',
+      id: queryId,
+      status: 'retrieving',
+      message: 'Searching knowledge base',
+      progress: 20,
+    });
 
     // Step 1: Retrieve relevant documents
     let retrievalResults;
@@ -70,6 +100,13 @@ export async function generateAnswer(
         error: retrievalError instanceof Error ? retrievalError.message : String(retrievalError),
         question,
       });
+      statusTracker.emitStatus({
+        type: 'query',
+        id: queryId,
+        status: 'error',
+        message: 'Retrieval failed',
+        progress: 0,
+      });
       return {
         answer: "I encountered an error while searching the knowledge base. Please try again or rephrase your question.",
         citations: [],
@@ -82,6 +119,13 @@ export async function generateAnswer(
 
     if (retrievalResults.length === 0) {
       logger.warn('No documents retrieved for query', { question });
+      statusTracker.emitStatus({
+        type: 'query',
+        id: queryId,
+        status: 'no_results',
+        message: 'No relevant documents found',
+        progress: 0,
+      });
       return {
         answer: "I couldn't find any relevant information in the knowledge base to answer your question.",
         citations: [],
@@ -91,6 +135,14 @@ export async function generateAnswer(
         },
       };
     }
+
+    statusTracker.emitStatus({
+      type: 'query',
+      id: queryId,
+      status: 'generating',
+      message: `Generating answer from ${retrievalResults.length} relevant chunks`,
+      progress: 50,
+    });
 
     // Step 2: Build prompts
     const systemPrompt = buildSystemPrompt();
@@ -116,6 +168,14 @@ export async function generateAnswer(
     ]);
 
     // Step 5: Generate answer
+    statusTracker.emitStatus({
+      type: 'query',
+      id: queryId,
+      status: 'llm_processing',
+      message: 'LLM is generating answer',
+      progress: 70,
+    });
+
     const answer = await chain.invoke({
       systemPrompt,
       userPrompt,
@@ -142,7 +202,33 @@ export async function generateAnswer(
       responseTime,
     });
 
-    // Step 7: Store query in database (optional, for analytics)
+    // Step 6: Build result object
+    const result: GenerationResult = {
+      answer,
+      citations,
+      sources,
+      metadata: {
+        model: config.ollama.llmModel,
+        responseTime,
+      },
+    };
+
+    statusTracker.emitStatus({
+      type: 'query',
+      id: queryId,
+      status: 'completed',
+      message: 'Answer generated successfully',
+      progress: 100,
+      data: { responseTime, citationsCount: citations.length },
+    });
+
+    // Step 7: Cache the result
+    if (useCache) {
+      const cacheKey = { topK, temperature, maxTokens, filter };
+      queryCache.set(question, result, cacheKey);
+    }
+
+    // Step 8: Store query in database (optional, for analytics)
     try {
       const db = await getDatabase();
       const { generateId } = await import('../../utils/helpers');
@@ -154,15 +240,7 @@ export async function generateAnswer(
       // Don't fail the request if query storage fails
     }
 
-    return {
-      answer,
-      citations,
-      sources,
-      metadata: {
-        model: config.ollama.llmModel,
-        responseTime,
-      },
-    };
+    return result;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error('Failed to generate answer', {
