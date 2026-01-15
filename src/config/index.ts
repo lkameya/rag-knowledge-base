@@ -14,6 +14,7 @@ export interface Config {
   chroma: {
     dbPath: string;
     collectionName: string;
+    serverUrl: string;
   };
   sqlite: {
     dbPath: string;
@@ -47,6 +48,7 @@ export const config: Config = {
   chroma: {
     dbPath: process.env.CHROMA_DB_PATH || defaultConfig.chroma.dbPath,
     collectionName: defaultConfig.chroma.collectionName,
+    serverUrl: process.env.CHROMA_SERVER_URL || defaultConfig.chroma.serverUrl,
   },
   sqlite: {
     dbPath: process.env.SQLITE_DB_PATH || defaultConfig.sqlite.dbPath,

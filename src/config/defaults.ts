@@ -9,6 +9,7 @@ export const defaultConfig = {
   chroma: {
     dbPath: './chroma_db',
     collectionName: 'documents',
+    serverUrl: 'http://localhost:8000',
   },
   sqlite: {
     dbPath: './data/metadata.db',

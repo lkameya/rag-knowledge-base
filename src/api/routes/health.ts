@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { isDatabaseConnected } from '../../storage/metadata/database';
+import { isChromaConnected } from '../../storage/vector/chromaClient';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
 
@@ -16,8 +17,8 @@ router.get('/', async (req: Request, res: Response) => {
       timestamp: new Date().toISOString(),
       services: {
         sqlite: isDatabaseConnected() ? 'connected' : 'disconnected',
-        chroma: 'unknown', // Will be implemented when Chroma is set up
-        ollama: 'unknown', // Will be implemented when Ollama integration is added
+        chroma: (await isChromaConnected()) ? 'connected' : 'disconnected',
+        ollama: 'unknown',
       },
     };
 
@@ -36,6 +37,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     const allHealthy = 
       checks.services.sqlite === 'connected' &&
+      checks.services.chroma === 'connected' &&
       checks.services.ollama === 'connected';
 
     const statusCode = allHealthy ? 200 : 503;

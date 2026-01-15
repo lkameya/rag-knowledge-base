@@ -5,6 +5,26 @@ const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.errors({ stack: true }),
   winston.format.splat(),
+  winston.format((info) => {
+    // Ensure error objects are properly serialized
+    if (info.error && typeof info.error === 'object') {
+      if (info.error instanceof Error) {
+        info.error = {
+          message: info.error.message,
+          stack: info.error.stack,
+          name: info.error.name,
+        };
+      } else {
+        // Try to stringify other objects
+        try {
+          info.error = JSON.stringify(info.error);
+        } catch {
+          info.error = String(info.error);
+        }
+      }
+    }
+    return info;
+  })(),
   winston.format.json()
 );
 
