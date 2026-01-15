@@ -22,7 +22,6 @@ chroma_db/
 # Uploads
 uploads/
 *.pdf
-*.md
 *.txt
 
 # Logs
