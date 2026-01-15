@@ -45,12 +45,18 @@ export async function getVectorStore(): Promise<Chroma> {
 
     logger.info('Chroma client initialized', { url: chromaServerUrl });
 
-    // Check if collection exists
+    // Check if collection exists by listing collections
     let collectionExists = false;
     try {
-      await chromaClientInstance.getCollection({ name: config.chroma.collectionName });
-      collectionExists = true;
-      logger.info('Found existing Chroma collection', { collectionName: config.chroma.collectionName });
+      const collections = await chromaClientInstance.listCollections();
+      collectionExists = collections.some((col: any) => col.name === config.chroma.collectionName);
+      if (collectionExists) {
+        logger.info('Found existing Chroma collection', { collectionName: config.chroma.collectionName });
+      } else {
+        logger.info('Collection does not exist, will create new one', { 
+          collectionName: config.chroma.collectionName,
+        });
+      }
     } catch (error) {
       collectionExists = false;
       logger.info('Collection does not exist, will create new one', { 
@@ -65,7 +71,7 @@ export async function getVectorStore(): Promise<Chroma> {
         embeddings,
         {
           collectionName: config.chroma.collectionName,
-          client: chromaClientInstance,
+          url: chromaServerUrl,
         }
       );
 
@@ -82,7 +88,7 @@ export async function getVectorStore(): Promise<Chroma> {
         embeddings,
         {
           collectionName: config.chroma.collectionName,
-          client: chromaClientInstance,
+          url: chromaServerUrl,
         }
       );
 
@@ -146,15 +152,73 @@ export async function addDocumentsToVectorStore(
 
 /**
  * Search similar documents
+ * 
+ * This function queries Chroma directly using ChromaClient to bypass LangChain's filter bug
+ * where it passes empty {} filters causing "Invalid where clause" errors.
  */
 export async function similaritySearch(
   query: string,
   k: number = 5
 ): Promise<Document[]> {
-  const store = await getVectorStore();
-  const results = await store.similaritySearch(query, k);
-  logger.info('Similarity search performed', { query, resultsCount: results.length });
-  return results;
+  try {
+    // Get embeddings and ensure store is initialized
+    await getVectorStore();
+    const embeddingsInstance = embeddings!;
+    const chromaClient = chromaClientInstance!;
+    
+    // Generate query embedding
+    logger.debug('Generating query embedding', { query });
+    const queryEmbedding = await embeddingsInstance.embedQuery(query);
+    
+    logger.debug('Querying Chroma directly via ChromaClient', { 
+      collectionName: config.chroma.collectionName,
+      k,
+    });
+    
+    // Get collection and query directly - this bypasses LangChain's filter handling
+    const collection = await chromaClient.getOrCreateCollection({
+      name: config.chroma.collectionName,
+    });
+    
+    // Query without any where/filter clause
+    const queryResult = await collection.query({
+      queryEmbeddings: [queryEmbedding],
+      nResults: k,
+      // Explicitly don't pass 'where' to avoid empty filter issue
+    });
+    
+    // Convert Chroma results to LangChain Documents
+    const documents: Document[] = [];
+    if (queryResult.ids && queryResult.ids[0]) {
+      const ids = queryResult.ids[0];
+      const metadatas = queryResult.metadatas?.[0] || [];
+      const documents_data = queryResult.documents?.[0] || [];
+      
+      for (let i = 0; i < ids.length; i++) {
+        documents.push(
+          new Document({
+            pageContent: documents_data[i] || '',
+            metadata: metadatas[i] || {},
+          })
+        );
+      }
+    }
+    
+    logger.info('Similarity search performed (via ChromaClient)', { 
+      query, 
+      resultsCount: documents.length 
+    });
+    return documents;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('Similarity search failed', {
+      error: errorMessage,
+      query,
+      k,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    throw error;
+  }
 }
 
 /**
@@ -165,14 +229,30 @@ export async function similaritySearchWithMetadata(
   filter: Record<string, any>,
   k: number = 5
 ): Promise<Document[]> {
-  const store = await getVectorStore();
-  const results = await store.similaritySearchWithScore(query, k, filter);
-  logger.info('Similarity search with metadata performed', {
-    query,
-    filter,
-    resultsCount: results.length,
-  });
-  return results.map(([doc]) => doc);
+  try {
+    // Validate filter is not empty
+    if (!filter || typeof filter !== 'object' || Array.isArray(filter) || Object.keys(filter).length === 0) {
+      throw new Error('Filter must be a non-empty object');
+    }
+
+    const store = await getVectorStore();
+    const results = await store.similaritySearchWithScore(query, k, filter);
+    logger.info('Similarity search with metadata performed', {
+      query,
+      filter,
+      resultsCount: results.length,
+    });
+    return results.map(([doc]) => doc);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('Similarity search with metadata failed', {
+      error: errorMessage,
+      query,
+      filter,
+      k,
+    });
+    throw error;
+  }
 }
 
 /**

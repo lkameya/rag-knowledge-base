@@ -6,6 +6,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/logger';
 import healthRouter from './routes/health';
 import documentsRouter from './routes/documents';
+import queriesRouter from './routes/queries';
 
 export function createApp(): Express {
   const app = express();
@@ -19,6 +20,7 @@ export function createApp(): Express {
   // Routes
   app.use('/api/health', healthRouter);
   app.use('/api/documents', documentsRouter);
+  app.use('/api/query', queriesRouter);
 
   // Root endpoint
   app.get('/', (req, res) => {
